@@ -1,0 +1,69 @@
+{
+  "name": "itinerisltd/wp-cli-post-meta-import",
+  "type": "wp-cli-package",
+  "description": "",
+  "homepage": "https://github.com/itinerisltd/wp-cli-post-meta-import",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Lee Hanbury-Pickett",
+      "role": "Developer",
+      "homepage": "https://github.com/codepuncher"
+    },
+    {
+      "name": "Barny Thorpe",
+      "role": "Developer",
+      "homepage": "https://github.com/Barny.Thorpe"
+    }
+  ],
+  "require": {
+    "wp-cli/wp-cli": "^2.5"
+  },
+  "require-dev": {
+    "itinerisltd/itineris-wp-coding-standards": "^1.0",
+    "wp-cli/wp-cli-tests": "^3.0.11"
+  },
+  "config": {
+    "process-timeout": 7200,
+    "sort-packages": true,
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  },
+  "extra": {
+    "branch-alias": {
+      "dev-master": "2.x-dev"
+    },
+    "bundled": false,
+    "commands": [
+      "post meta import"
+    ]
+  },
+  "autoload": {
+    "psr-4": {
+      "ItinerisLtd\\PostMetaImport\\": "src/"
+    },
+    "files": [
+      "command.php"
+    ]
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "scripts": {
+    "behat": "run-behat-tests",
+    "behat-rerun": "rerun-behat-tests",
+    "lint": "run-linter-tests",
+    "phpcs": "run-phpcs-tests",
+    "phpunit": "run-php-unit-tests",
+    "prepare-tests": "install-package-tests",
+    "test": [
+      "@lint",
+      "@phpcs",
+      "@phpunit",
+      "@behat"
+    ]
+  },
+  "support": {
+    "issues": "https://github.com/itinerisltd/wp-cli-post-meta-import/issues"
+  }
+}
