@@ -57,6 +57,7 @@ Does not support terms.
     ]
 
 **SAMPLE CSV**
+
     url,my_meta_field,_yoast_wpseo_title,_yoast_wpseo_metadesc,_yoast_wpseo_canonical
     https://example.com/sample-page,My new value!,My new SEO title,My new SEO description,https://example.co.uk/sample-page
     https://example.com/hello-world,My new value!,My new SEO title,,https://example.co.uk/foo-bar
