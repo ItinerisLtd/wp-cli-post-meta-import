@@ -13,20 +13,20 @@ Quick links: [Using](#using) | [Installing](#installing) | [Contributing](#contr
 wp post meta import <file> [--[no-]dry-run] [--yes]
 ~~~
 
-Processes a JSON array of objects with requried `"url"` property.
+Imports post meta for URLs from CSV or JSON files.
 URLs will be passed to [url_to_postid()](https://developer.wordpress.org/reference/functions/url_to_postid/) to find a post ID.
 
-Each object property will be treated as a meta field to update.
-Meta updates must be provides in a `"key": "value"` pair.
+If providing a CSV file, the first row will be used as a header row for meta keys.
+If providing a JSON file, each object key:value pair will be used for meta_key:meta_value.
 
-Values will be whitespace trimmed and skipped if empty.
+Keys and values will be whitespace trimmed and skipped if empty.
 
 Does not support terms.
 
 **OPTIONS**
 
 	<file>
-		The input JSON file to parse. Path must be relative to ABSPATH.
+		The input file to parse. Path must be relative to ABSPATH.
 
 	[--[no-]dry-run]
 		Whether to just report on changes or also save changes to database.
@@ -51,22 +51,30 @@ Does not support terms.
         "url": "https://example.com/hello-world",
         "my_meta_field": "My new value!",
         "_yoast_wpseo_title": "My new SEO title",
-        "_yoast_wpseo_metadesc": "", # This will not be changed
+        "_yoast_wpseo_metadesc": "",
         "_yoast_wpseo_canonical": "https://example.co.uk/foo-bar"
       }
     ]
 
+**SAMPLE CSV**
+    url,my_meta_field,_yoast_wpseo_title,_yoast_wpseo_metadesc,_yoast_wpseo_canonical
+    https://example.com/sample-page,My new value!,My new SEO title,My new SEO description,https://example.co.uk/sample-page
+    https://example.com/hello-world,My new value!,My new SEO title,,https://example.co.uk/foo-bar
+
 **EXAMPLES**
 
-    $ wp post meta import wp-content/uploads/post-meta.json --dry-run
+    $ wp post meta import wp-content/uploads/post-meta.csv --dry-run
     350 detected records to process
     Are you ready to process 350 records? [y/n]
     ...
-    Finished: Rows processed: 350. Meta processed: 981.
+    Finished.
+    Rows processed: 350. Meta processed: 981.
     ---
     $ wp post meta import wp-content/uploads/post-meta.json --yes --no-dry-run
+    350 detected records to process
     ...
-    Finished. Rows processed: 350. Meta processed: 981. Meta updated: 440. Meta skipped: 535. Meta unchanged: 6. Meta failed 0.
+    Finished.
+    Rows processed: 350. Meta processed: 981. Meta updated: 440. Meta skipped: 535. Meta unchanged: 6. Meta failed 0.
 
 ## Installing
 
