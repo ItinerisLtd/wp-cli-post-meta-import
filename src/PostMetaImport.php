@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace ItinerisLtd\PostMetaImport;
 
+use Exception;
+use League\Csv\Reader;
+use League\Csv\UnavailableStream;
 use WP_CLI;
 use WP_CLI_Command;
 
@@ -22,20 +25,20 @@ class PostMetaImport extends WP_CLI_Command
     /**
      * Bulk import meta data for posts.
      *
-     * Processes a JSON array of objects with requried `"url"` property.
+     * Imports post meta for URLs from CSV or JSON files.
      * URLs will be passed to [url_to_postid()](https://developer.wordpress.org/reference/functions/url_to_postid/) to find a post ID.
      *
-     * Each object property will be treated as a meta field to update.
-     * Meta updates must be provides in a `"key": "value"` pair.
+     * If providing a CSV file, the first row will be used as a header row for meta keys.
+     * If providing a JSON file, each object key:value pair will be used for meta_key:meta_value.
      *
-     * Values will be whitespace trimmed and skipped if empty.
+     * Keys and values will be whitespace trimmed and skipped if empty.
      *
      * Does not support terms.
      *
      * ## OPTIONS
      *
      * <file>
-     * : The input JSON file to parse. Path must be relative to ABSPATH.
+     * : The input file to parse. Path must be relative to ABSPATH.
      *
      * [--[no-]dry-run]
      * : Whether to just report on changes or also save changes to database.
@@ -60,22 +63,30 @@ class PostMetaImport extends WP_CLI_Command
      *         "url": "https://example.com/hello-world",
      *         "my_meta_field": "My new value!",
      *         "_yoast_wpseo_title": "My new SEO title",
-     *         "_yoast_wpseo_metadesc": "", # This will not be changed
+     *         "_yoast_wpseo_metadesc": "",
      *         "_yoast_wpseo_canonical": "https://example.co.uk/foo-bar"
      *       }
      *     ]
      *
+     * ## SAMPLE CSV
+     *     url,my_meta_field,_yoast_wpseo_title,_yoast_wpseo_metadesc,_yoast_wpseo_canonical
+     *     https://example.com/sample-page,My new value!,My new SEO title,My new SEO description,https://example.co.uk/sample-page
+     *     https://example.com/hello-world,My new value!,My new SEO title,,https://example.co.uk/foo-bar
+     *
      * ## EXAMPLES
      *
-     *     $ wp post meta import wp-content/uploads/post-meta.json --dry-run
+     *     $ wp post meta import wp-content/uploads/post-meta.csv --dry-run
      *     350 detected records to process
      *     Are you ready to process 350 records? [y/n]
      *     ...
-     *     Finished: Rows processed: 350. Meta processed: 981.
+     *     Finished.
+     *     Rows processed: 350. Meta processed: 981.
      *     ---
      *     $ wp post meta import wp-content/uploads/post-meta.json --yes --no-dry-run
+     *     350 detected records to process
      *     ...
-     *     Finished. Rows processed: 350. Meta processed: 981. Meta updated: 440. Meta skipped: 535. Meta unchanged: 6. Meta failed 0.
+     *     Finished.
+     *     Rows processed: 350. Meta processed: 981. Meta updated: 440. Meta skipped: 535. Meta unchanged: 6. Meta failed 0.
      */
     public function __invoke(array $args, array $assoc_args): void
     {
@@ -84,9 +95,13 @@ class PostMetaImport extends WP_CLI_Command
             WP_CLI::error('No input file provided');
         }
 
+        if (! str_ends_with($input_file, '.csv') && ! str_ends_with($input_file, '.json')) {
+            WP_CLI::error('Input file must be .csv or .json');
+        }
+
         $this->data = $this->toArray($input_file);
         if (empty($this->data)) {
-            WP_CLI::error('Parsed JSON data is empty');
+            WP_CLI::error('Input file is empty');
         }
 
         $this->row_count = count($this->data);
@@ -136,44 +151,44 @@ class PostMetaImport extends WP_CLI_Command
     {
         foreach ($this->data as $key => $data) {
             $this->rows_processed++;
-            if (empty($data) || empty($data->url)) {
+            if (empty($data) || empty($data['url'])) {
                 $this->rows_failed++;
-                WP_CLI::error("Data or data->url empty for item with the index: {$key} in json data", false);
+                WP_CLI::error("Record or URL is empty for item with the index: {$key}", false);
                 continue;
             }
 
-            $post_id = url_to_postid($data->url);
+            $post_id = url_to_postid($data['url']);
             if (empty($post_id)) {
                 $this->rows_failed++;
                 WP_CLI::error(
-                    "Could not find post ID for {$data->url}; the URL either doesn't exist or is not a post.",
+                    "Could not find post ID for {$data['url']}; the URL either doesn't exist or is not a post.",
                     false,
                 );
                 continue;
             }
 
-            WP_CLI::log("Post #{$post_id} - {$data->url}");
+            WP_CLI::log("Post #{$post_id} - {$data['url']}");
             $this->updatePost($post_id, $data, $dry_run);
-            WP_CLI::log(PHP_EOL);
         }
     }
 
     /**
      * Update a posts meta data.
      */
-    protected function updatePost(int $post_id, object $data, bool $dry_run = false): void
+    protected function updatePost(int $post_id, array $fields, bool $dry_run = true): void
     {
-        if (empty($post_id) || empty($data)) {
+        if (empty($post_id) || empty($fields)) {
             return;
         }
 
-        $fields = get_object_vars($data);
+        $url = $fields['url'];
         unset($fields['url']);
 
         foreach ($fields as $key => $value) {
             $this->meta_processed++;
-            $current_value = get_post_meta($post_id, $key, true);
+            $key = trim($key ?? '');
             $new_value = trim($value ?? '');
+            $current_value = get_post_meta($post_id, $key, true);
             if ($dry_run) {
                 if (empty($new_value)) {
                     continue;
@@ -187,7 +202,7 @@ class PostMetaImport extends WP_CLI_Command
             }
 
             if (empty($new_value)) {
-                WP_CLI::warning("The value for field '{$key}' on '{$data->url}' is empty");
+                WP_CLI::warning("The value for field '{$key}' on '{$url}' is empty");
                 $this->meta_skipped++;
                 continue;
             }
@@ -196,16 +211,51 @@ class PostMetaImport extends WP_CLI_Command
             if (false === $update_meta) {
                 if ($current_value === $new_value) {
                     $this->meta_unchanged++;
-                    WP_CLI::success("Value passed for field '{$key}' is unchanged on {$data->url}.");
+                    WP_CLI::success("Value passed for field '{$key}' is unchanged on {$url}.");
                 } else {
                     $this->meta_failed++;
-                    WP_CLI::error("Failed to update value for '{$key}' on {$data->url}.", false);
+                    WP_CLI::error("Failed to update value for '{$key}' on {$url}.", false);
                 }
             } else {
                 $this->meta_updated++;
-                WP_CLI::success("Updated '{$key}' field on {$data->url}.");
+                WP_CLI::success("Updated '{$key}' field on {$url}.");
             }
         }
+    }
+
+    protected function jsonToArray(string $file_path): array
+    {
+        $file_contents = file_get_contents($file_path);
+        if (empty($file_contents)) {
+            WP_CLI::error('Could not read input file.');
+        }
+
+        $records = json_decode($file_contents, true);
+        if (empty($records)) {
+            WP_CLI::error('Could not run json_decode on input file.');
+        }
+
+        return $records;
+    }
+
+    protected function csvToArray(string $file_path): array
+    {
+        try {
+            $reader = Reader::createFromPath($file_path, 'r');
+        } catch (UnavailableStream $err) {
+            WP_CLI::error($err->getMessage(), true);
+        }
+
+        $reader->includeEmptyRecords();
+        $reader->setHeaderOffset(0);
+
+        try {
+            $records = $reader->getRecords();
+        } catch (Exception $err) {
+            WP_CLI::error($err->getMessage(), true);
+        }
+
+        return iterator_to_array($records);
     }
 
     protected function toArray(string $input_file): array
@@ -216,16 +266,10 @@ class PostMetaImport extends WP_CLI_Command
             return [];
         }
 
-        $file_contents = file_get_contents($file_path);
-        if (empty($file_contents)) {
-            WP_CLI::error('Could not read input file.');
+        if (str_ends_with($input_file, '.json')) {
+            return $this->jsonToArray($file_path);
         }
 
-        $json = json_decode($file_contents);
-        if (empty($json)) {
-            WP_CLI::error('Could not run json_decode on input file.');
-        }
-
-        return $json;
+        return $this->csvToArray($file_path);
     }
 }
