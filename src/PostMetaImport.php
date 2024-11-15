@@ -21,6 +21,8 @@ class PostMetaImport extends WP_CLI_Command
     protected int $meta_failed = 0;
     protected int $meta_skipped = 0;
     protected int $meta_unchanged = 0;
+    protected bool $set_empty = false;
+    protected bool $delete_empty = false;
 
     /**
      * Bulk import meta data for posts.
@@ -44,6 +46,18 @@ class PostMetaImport extends WP_CLI_Command
      * : Whether to just report on changes or also save changes to database.
      * --
      * default: --dry-run
+     * --
+     *
+     * [--[no-]delete-empty]
+     * : Whether to delete metas where their new values are empty.
+     * --
+     * default: --no-delete-empty
+     * --
+     *
+     * [--[no-]set-empty]
+     * : Whether to set meta values to empty where specified.
+     * --
+     * default: --no-set-empty
      * --
      *
      * [--yes]
@@ -120,6 +134,12 @@ class PostMetaImport extends WP_CLI_Command
             WP_CLI::warning('Executing WITHOUT dry run.');
         }
 
+        $this->set_empty = $assoc_args['set-empty'] ?? false;
+        $this->delete_empty = $assoc_args['delete-empty'] ?? false;
+        if ($this->set_empty && $this->delete_empty) {
+            WP_CLI::error('You cannot delete and set empty meta values at the same time. Use only one of these flags.');
+        }
+
         WP_CLI::log("Processing {$this->row_count} records...");
         $this->run($dry_run);
 
@@ -191,7 +211,7 @@ class PostMetaImport extends WP_CLI_Command
             $new_value = trim($value ?? '');
             $current_value = get_post_meta($post_id, $key, true);
             if ($dry_run) {
-                if (empty($new_value)) {
+                if ((! $this->delete_empty && ! $this->set_empty) && empty($new_value)) {
                     continue;
                 }
 
@@ -202,13 +222,19 @@ class PostMetaImport extends WP_CLI_Command
                 continue;
             }
 
-            if (empty($new_value)) {
+            if ((! $this->delete_empty && ! $this->set_empty) && empty($new_value)) {
                 WP_CLI::warning("The value for field '{$key}' on '{$url}' is empty");
                 $this->meta_skipped++;
                 continue;
             }
 
-            $update_meta = update_post_meta($post_id, $key, $new_value);
+            if ($this->delete_empty) {
+                $update_meta = delete_post_meta($post_id, $key);
+                $action = 'Deleted';
+            } else {
+                $update_meta = update_post_meta($post_id, $key, $new_value);
+                $action = 'Updated';
+            }
             if (false === $update_meta) {
                 if ($current_value === $new_value) {
                     $this->meta_unchanged++;
@@ -219,7 +245,7 @@ class PostMetaImport extends WP_CLI_Command
                 }
             } else {
                 $this->meta_updated++;
-                WP_CLI::success("Updated '{$key}' field on {$url}.");
+                WP_CLI::success("{$action} '{$key}' field on {$url}.");
             }
         }
     }
